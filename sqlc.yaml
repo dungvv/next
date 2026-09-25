@@ -1,0 +1,37 @@
+version: "2"
+sql:
+  # sqlc cannot parse the raw migration set (DO $$ blocks, .down.sql files,
+  # plpgsql bodies). Regenerate the flattened schema after changing migrations:
+  #   ./tooling/gen_sqlc_schema.sh
+  - engine: postgresql
+    schema: sqlc/schema
+    queries: sqlc/macrodb
+    gen:
+      go:
+        package: macrodb
+        out: pkg/store/macrodb
+        sql_package: pgx/v5
+  - engine: postgresql
+    schema: sqlc/schema
+    queries: sqlc/emaildb
+    gen:
+      go:
+        package: emaildb
+        out: pkg/store/emaildb
+        sql_package: pgx/v5
+  - engine: postgresql
+    schema: sqlc/schema
+    queries: sqlc/commsdb
+    gen:
+      go:
+        package: commsdb
+        out: pkg/store/commsdb
+        sql_package: pgx/v5
+  - engine: postgresql
+    schema: sqlc/schema
+    queries: sqlc/notifdb
+    gen:
+      go:
+        package: notifdb
+        out: pkg/store/notifdb
+        sql_package: pgx/v5

@@ -1,0 +1,44 @@
+# gqlgen config for the soup/complete-graph schema.
+# schema.graphql is a verbatim copy of static_assets/schema.graphql (the
+# async-graphql SDL export that feeds the frontend codegen) minus the
+# built-in directive re-declarations gqlparser already knows.
+schema:
+  - schema.graphql
+
+exec:
+  filename: generated.go
+  package: gql
+
+model:
+  filename: models_gen.go
+  package: gql
+
+resolver:
+  filename: resolver_gen.go
+  package: gql
+  type: Resolver
+
+# Large schema: keep the generated exec in one file.
+omit_slice_element_pointers: true
+
+models:
+  JSON:
+    model:
+      - github.com/macro-inc/macro/internal/api/dss/gql.JSON
+  SoupCacheProjection:
+    model:
+      - github.com/macro-inc/macro/internal/api/dss/gql.JSON
+  GraphqlUser:
+    fields:
+      favorites:
+        resolver: true
+      activity:
+        resolver: true
+      activityOverview:
+        resolver: true
+      emailThread:
+        resolver: true
+      groupSoup:
+        resolver: true
+      soup:
+        resolver: true

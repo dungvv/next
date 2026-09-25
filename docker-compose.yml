@@ -1,0 +1,110 @@
+# Self-host dev environment for the Go backend (docs/GO_SELFHOST_PLAN.md).
+name: macro-selfhost
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg17
+    # pg_stat_statements is required by migration 20260220181213.
+    command:
+      - postgres
+      - -c
+      - shared_preload_libraries=pg_stat_statements
+      - -c
+      - pg_stat_statements.track=all
+    environment:
+      POSTGRES_USER: macro
+      POSTGRES_PASSWORD: macro
+      POSTGRES_DB: macrodb
+    ports: ["5432:5432"]
+    volumes: ["pgdata:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U macro"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  create-dbs:
+    image: postgres:17
+    depends_on:
+      postgres: {condition: service_healthy}
+    entrypoint: >
+      sh -c "for db in casdoor; do
+        PGPASSWORD=macro psql -h postgres -U macro -tc
+        \"SELECT 1 FROM pg_database WHERE datname='$$db'\" | grep -q 1 ||
+        PGPASSWORD=macro psql -h postgres -U macro -c \"CREATE DATABASE $$db\";
+      done"
+    restart: "no"
+
+  nats:
+    image: nats:2.11-alpine
+    # -sd /data persists JetStream state across container recreation.
+    command: ["-js", "-sd", "/data", "-m", "8222"]
+    ports: ["4222:4222", "8222:8222"]
+    volumes: ["natsdata:/data"]
+
+  minio:
+    image: minio/minio:RELEASE.2025-10-15T17-29-55Z
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    ports: ["9000:9000", "9001:9001"]
+    volumes: ["miniodata:/data"]
+
+  valkey:
+    image: valkey/valkey:8-alpine
+    ports: ["6379:6379"]
+
+  casdoor:
+    image: casbin/casdoor:4.9.0
+    depends_on:
+      create-dbs: {condition: service_completed_successfully}
+    ports: ["8000:8000"]
+    environment:
+      driverName: postgres
+      dataSourceName: "postgres://macro:macro@postgres:5432/casdoor?sslmode=disable"
+
+  livekit:
+    image: livekit/livekit-server:v1.13
+    command: ["--dev", "--bind", "0.0.0.0"]
+    ports: ["7880:7880", "7881:7881", "7882:7882/udp"]
+
+  mailhog:
+    image: mailhog/mailhog:v1.0.1
+    ports: ["1025:1025", "8025:8025"]
+
+  macro:
+    build:
+      context: .
+      dockerfile: docker/macro/Dockerfile
+    depends_on:
+      postgres: {condition: service_healthy}
+      create-dbs: {condition: service_completed_successfully}
+      nats: {condition: service_started}
+      minio: {condition: service_started}
+      valkey: {condition: service_started}
+    command: ["all"]
+    ports:
+      - "8080:8080"   # api
+      - "8085:8085"   # gateway ws
+      - "8086:8086"   # gateway internal api
+      - "8090:8090"   # notification
+      - "8787:8787"   # sync
+    environment:
+      # All DB URLs point at the same database: the schema/queries join across
+      # domain tables, so a physical split is not supported yet.
+      MACRO_DB_URL: postgres://macro:macro@postgres:5432/macrodb
+      EMAIL_DB_URL: postgres://macro:macro@postgres:5432/macrodb
+      COMMS_DB_URL: postgres://macro:macro@postgres:5432/macrodb
+      NOTIFICATION_DB_URL: postgres://macro:macro@postgres:5432/macrodb
+      NATS_URL: nats://nats:4222
+      VALKEY_ADDR: valkey:6379
+      S3_ENDPOINT: http://minio:9000
+      CASDOOR_ENDPOINT: http://casdoor:8000
+      SMTP_HOST: mailhog
+      SMTP_PORT: "1025"
+
+volumes:
+  pgdata:
+  natsdata:
+  miniodata:

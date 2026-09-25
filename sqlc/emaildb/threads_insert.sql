@@ -1,0 +1,18 @@
+-- name: InsertThread :one
+INSERT INTO email_threads (id, provider_id, link_id, inbox_visible, is_read, latest_inbound_message_ts,
+                             latest_outbound_message_ts, latest_non_spam_message_ts)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        ON CONFLICT (link_id, provider_id) WHERE provider_id IS NOT NULL DO UPDATE
+        SET
+            latest_inbound_message_ts = EXCLUDED.latest_inbound_message_ts,
+            updated_at = NOW()
+        WHERE
+            EXCLUDED.latest_inbound_message_ts IS NOT NULL AND
+            email_threads.latest_inbound_message_ts IS DISTINCT FROM EXCLUDED.latest_inbound_message_ts
+        RETURNING id;
+
+
+-- name: InsertThread2 :one
+SELECT id FROM email_threads
+        WHERE link_id = $1 AND provider_id = $2;
+
